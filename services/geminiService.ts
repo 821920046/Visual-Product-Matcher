@@ -3,109 +3,80 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Product, MatchResult, ScanStats } from "../types";
 
 /**
- * 核心：直接从环境读取 API_KEY。
- * 注意：在本地开发时需要 .env 文件，在 Cloudflare 部署时需要在后台配置。
+ * 每次调用都重新实例化以确保使用最新的 API KEY
  */
 const getClient = () => {
   const key = process.env.API_KEY;
-  if (!key || key.length < 10) {
-    throw new Error("API_KEY_NOT_CONFIGURED");
-  }
+  if (!key) throw new Error("API_KEY_NOT_CONFIGURED");
   return new GoogleGenAI({ apiKey: key });
 };
 
+/**
+ * 合并后的扫描逻辑：一次调用完成搜索 + 结构化提取
+ */
 export const scanWebsite = async (url: string): Promise<{ products: Product[], stats: ScanStats }> => {
   const startTime = Date.now();
+  const ai = getClient();
   
   try {
-    const ai = getClient();
-    
-    // 阶段 1：使用 Google Search Grounding 获取网页实时数据
-    // Flash 模型在免费层级支持此功能，非常强大
-    const searchResponse = await ai.models.generateContent({
+    // 将搜索和 JSON 提取合并为一个 Prompt，减少 50% 配额消耗
+    const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Perform a detailed analysis of the shop website: ${url}. 
-                 Extract a list of available products with their:
-                 - Name
-                 - Price (e.g., "¥299")
-                 - Brief description
-                 - Image URL (direct link to the product photo)
-                 
-                 Also identify the overall store category. If the site is protected by anti-bot, try to summarize based on public index.`,
+      contents: `You are an expert shop scanner. 
+                 1. Search for products on this website: ${url}
+                 2. Return a list of up to 12 products.
+                 3. Format the result strictly as JSON with this structure:
+                 {
+                   "products": [{"name": string, "description": string, "price": string, "numericPrice": number, "category": string, "imageUrl": string}],
+                   "siteCategory": string
+                 }
+                 IMPORTANT: Output ONLY pure JSON. Do not include any citations like [1], [2] or explanations.`,
       config: {
         tools: [{ googleSearch: {} }],
+        // 虽然有工具，我们依然请求 JSON
+        responseMimeType: "application/json",
       },
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    const groundingChunks = searchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks;
-    const sources = groundingChunks?.map((chunk: any) => ({
-      title: chunk.web?.title || 'Shop Source',
-      uri: chunk.web?.uri
-    })).filter((s: any) => s.uri) || [];
-
-    // 阶段 2：结构化数据转换
-    const structureResponse = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Convert the following text into a valid JSON product catalog.
-                 
-                 TEXT TO CONVERT:
-                 ${searchResponse.text}`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            products: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.STRING },
-                  name: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  price: { type: Type.STRING },
-                  numericPrice: { type: Type.NUMBER },
-                  category: { type: Type.STRING },
-                  imageUrl: { type: Type.STRING },
-                },
-                required: ["name", "description", "price", "numericPrice", "category", "imageUrl"],
-              },
-            },
-            siteCategory: { type: Type.STRING },
-          },
-          required: ["products", "siteCategory"],
-        },
-      }
-    });
-
-    const data = JSON.parse(structureResponse.text || "{}");
+    
+    // 关键步骤：清洗 JSON 中可能存在的搜索引用标记（如 [1], [2]）
+    // 因为 Search Grounding 会强行插入这些标记导致 JSON.parse 崩溃
+    let rawText = response.text || "";
+    const cleanJsonText = rawText.replace(/\[\d+\]/g, "").trim();
+    
+    const data = JSON.parse(cleanJsonText);
+    
     const products = (data.products || []).map((p: any, idx: number) => ({
       ...p,
-      id: p.id || `prod-${idx}-${Date.now()}`,
+      id: p.id || `p-${idx}-${Date.now()}`,
       sourceUrl: url
     }));
+
+    // 获取来源链接
+    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    const sources = groundingChunks?.map((chunk: any) => ({
+      title: chunk.web?.title || 'Source',
+      uri: chunk.web?.uri
+    })).filter((s: any) => s.uri) || [];
 
     return {
       products,
       stats: {
         totalCount: products.length,
-        category: data.siteCategory || "General Store",
+        category: data.siteCategory || "Shop",
         scanDuration: `${duration}s`,
         sources
       }
     };
   } catch (error: any) {
-    // 捕获特定 API 错误
-    const errMsg = error.message || "";
-    if (errMsg.includes("API_KEY_NOT_CONFIGURED")) {
-      throw new Error("未检测到 API Key。请在部署平台的『环境变量』中添加名为 API_KEY 的变量。");
+    console.error("Scan Error:", error);
+    const msg = error.message || "";
+    if (msg.includes("429")) {
+      throw new Error("QUOTA_EXCEEDED");
     }
-    if (errMsg.includes("API key not valid")) {
-      throw new Error("API Key 无效。请确认你从 Google AI Studio 复制的是最新生成的 Key。");
-    }
-    if (errMsg.includes("429")) {
-      throw new Error("请求太频繁了。免费层级有每分钟限制，请稍后再试。");
+    if (msg.includes("400") || msg.includes("API key")) {
+      throw new Error("INVALID_KEY");
     }
     throw error;
   }
@@ -116,32 +87,20 @@ export const matchProductByImage = async (
   catalog: Product[]
 ): Promise<MatchResult | null> => {
   const ai = getClient();
-  const catalogContext = catalog.map(p => `ID:${p.id} Name:${p.name}`).join("\n");
-
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: {
-      parts: [
-        { inlineData: { mimeType: "image/jpeg", data: imageBase64 } },
-        { text: `Which item from this list matches the image best? Return JSON.\n\n${catalogContext}` },
-      ],
-    },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          productId: { type: Type.STRING },
-          confidence: { type: Type.NUMBER },
-          reasoning: { type: Type.STRING },
-        },
-        required: ["productId", "confidence", "reasoning"],
-      },
-    },
-  });
+  const context = catalog.map(p => `ID:${p.id} Name:${p.name}`).slice(0, 20).join("\n");
 
   try {
-    return JSON.parse(response.text || "null");
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: {
+        parts: [
+          { inlineData: { mimeType: "image/jpeg", data: imageBase64 } },
+          { text: `Match image to ID from list. Return JSON only: {productId, confidence, reasoning}\n\nList:\n${context}` },
+        ],
+      },
+      config: { responseMimeType: "application/json" },
+    });
+    return JSON.parse(response.text.replace(/\[\d+\]/g, ""));
   } catch (e) {
     return null;
   }

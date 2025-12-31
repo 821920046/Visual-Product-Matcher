@@ -3,52 +3,53 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Product, MatchResult, ScanStats } from "../types";
 
 /**
- * Initialize Gemini client using the mandatory named parameter and direct process.env.API_KEY access.
+ * 核心：直接从环境读取 API_KEY。
+ * 注意：在本地开发时需要 .env 文件，在 Cloudflare 部署时需要在后台配置。
  */
 const getClient = () => {
-  // Directly use process.env.API_KEY as per the library initialization guidelines.
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const key = process.env.API_KEY;
+  if (!key || key.length < 10) {
+    throw new Error("API_KEY_NOT_CONFIGURED");
+  }
+  return new GoogleGenAI({ apiKey: key });
 };
 
-/**
- * 扫描网站并提取商品
- * This implementation complies with Search Grounding rules by separating the search phase 
- * from the structured data extraction phase.
- */
 export const scanWebsite = async (url: string): Promise<{ products: Product[], stats: ScanStats }> => {
-  const ai = getClient();
   const startTime = Date.now();
   
   try {
-    // Phase 1: Search grounding to gather raw information.
-    // Rule: "The output response.text may not be in JSON format; do not attempt to parse it as JSON."
+    const ai = getClient();
+    
+    // 阶段 1：使用 Google Search Grounding 获取网页实时数据
+    // Flash 模型在免费层级支持此功能，非常强大
     const searchResponse = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `You are an e-commerce data extractor. Visit and analyze the website: ${url}. 
-                 Find and list the products including their name, description, image URL, and price.
-                 Limit results to 15 items. Identify the general category of this shop.`,
+      contents: `Perform a detailed analysis of the shop website: ${url}. 
+                 Extract a list of available products with their:
+                 - Name
+                 - Price (e.g., "¥299")
+                 - Brief description
+                 - Image URL (direct link to the product photo)
+                 
+                 Also identify the overall store category. If the site is protected by anti-bot, try to summarize based on public index.`,
       config: {
         tools: [{ googleSearch: {} }],
       },
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    
-    // Extract grounding sources to satisfy "MUST ALWAYS extract URLs" requirement.
     const groundingChunks = searchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks;
     const sources = groundingChunks?.map((chunk: any) => ({
-      title: chunk.web?.title || 'Verified Source',
+      title: chunk.web?.title || 'Shop Source',
       uri: chunk.web?.uri
     })).filter((s: any) => s.uri) || [];
 
-    // Phase 2: Extract structured data from the search result.
-    // We pass the raw text from the previous response to a fresh call without tools.
-    // This complies with the rule of not parsing search grounding results directly as JSON.
+    // 阶段 2：结构化数据转换
     const structureResponse = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Extract product data from the provided text into the specified JSON format.
+      contents: `Convert the following text into a valid JSON product catalog.
                  
-                 SOURCE TEXT:
+                 TEXT TO CONVERT:
                  ${searchResponse.text}`,
       config: {
         responseMimeType: "application/json",
@@ -67,73 +68,62 @@ export const scanWebsite = async (url: string): Promise<{ products: Product[], s
                   numericPrice: { type: Type.NUMBER },
                   category: { type: Type.STRING },
                   imageUrl: { type: Type.STRING },
-                  sourceUrl: { type: Type.STRING },
                 },
                 required: ["name", "description", "price", "numericPrice", "category", "imageUrl"],
               },
             },
-            totalCount: { type: Type.INTEGER },
             siteCategory: { type: Type.STRING },
           },
-          required: ["products", "totalCount", "siteCategory"],
+          required: ["products", "siteCategory"],
         },
       }
     });
 
-    // Access .text property directly.
-    const cleanJson = structureResponse.text || "{}";
-    const data = JSON.parse(cleanJson);
-    
+    const data = JSON.parse(structureResponse.text || "{}");
     const products = (data.products || []).map((p: any, idx: number) => ({
       ...p,
-      id: p.id || `p-${idx}-${Date.now()}`,
-      sourceUrl: p.sourceUrl || url
+      id: p.id || `prod-${idx}-${Date.now()}`,
+      sourceUrl: url
     }));
 
     return {
       products,
       stats: {
-        totalCount: data.totalCount || products.length,
-        category: data.siteCategory || "Shop",
+        totalCount: products.length,
+        category: data.siteCategory || "General Store",
         scanDuration: `${duration}s`,
         sources
       }
     };
   } catch (error: any) {
-    console.error("Gemini Scan Error:", error);
+    // 捕获特定 API 错误
+    const errMsg = error.message || "";
+    if (errMsg.includes("API_KEY_NOT_CONFIGURED")) {
+      throw new Error("未检测到 API Key。请在部署平台的『环境变量』中添加名为 API_KEY 的变量。");
+    }
+    if (errMsg.includes("API key not valid")) {
+      throw new Error("API Key 无效。请确认你从 Google AI Studio 复制的是最新生成的 Key。");
+    }
+    if (errMsg.includes("429")) {
+      throw new Error("请求太频繁了。免费层级有每分钟限制，请稍后再试。");
+    }
     throw error;
   }
 };
 
-/**
- * 图像匹配逻辑
- */
 export const matchProductByImage = async (
   imageBase64: string,
   catalog: Product[]
 ): Promise<MatchResult | null> => {
   const ai = getClient();
-  
-  const catalogContext = catalog.map(p => 
-    `ID: ${p.id}, Name: ${p.name}, Price: ${p.price}`
-  ).join("\n");
+  const catalogContext = catalog.map(p => `ID:${p.id} Name:${p.name}`).join("\n");
 
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: {
       parts: [
-        {
-          inlineData: {
-            mimeType: "image/jpeg",
-            data: imageBase64,
-          },
-        },
-        {
-          text: `Match this image against the following product list. Return only the ID of the best match and reasoning.
-                 
-                 INVENTORY:
-                 ${catalogContext}`,
-        },
+        { inlineData: { mimeType: "image/jpeg", data: imageBase64 } },
+        { text: `Which item from this list matches the image best? Return JSON.\n\n${catalogContext}` },
       ],
     },
     config: {
@@ -151,10 +141,8 @@ export const matchProductByImage = async (
   });
 
   try {
-    // Directly use the .text property getter.
-    const text = response.text || "null";
-    return JSON.parse(text);
-  } catch (error) {
+    return JSON.parse(response.text || "null");
+  } catch (e) {
     return null;
   }
 };

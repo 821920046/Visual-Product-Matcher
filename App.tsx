@@ -13,14 +13,8 @@ const App: React.FC = () => {
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{title: string, msg: string} | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-
-  // Filter state
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [maxPriceFilter, setMaxPriceFilter] = useState<number | null>(null);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,24 +27,16 @@ const App: React.FC = () => {
     try {
       const result = await scanWebsite(url);
       if (result.products.length === 0) {
-        throw new Error("No products could be identified. The website might be protected or have no clear product listings.");
+        throw new Error("无法从该网站提取商品。可能是因为网站开启了反爬虫保护（如微店、淘宝等），建议尝试其他更开放的店面。");
       }
       setCatalog(result.products);
       setScanStats(result.stats);
       setAppState(AppState.CATALOG);
-      setSelectedCategory('All');
-      setMaxPriceFilter(null);
-    } catch (err) {
-      console.error("Scan error:", err);
-      let message = "An error occurred while scanning. ";
-      if (err instanceof Error) {
-        if (err.message.includes('API key not valid')) {
-          message = "The provided Gemini API Key is invalid or expired. Please check your environment variables.";
-        } else {
-          message += err.message;
-        }
-      }
-      setError(message);
+    } catch (err: any) {
+      setError({
+        title: "扫描失败",
+        msg: err.message || "未知错误，请检查网络连接。"
+      });
       setAppState(AppState.IDLE);
     } finally {
       setIsScanning(false);
@@ -60,18 +46,6 @@ const App: React.FC = () => {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      setError("Please upload a valid image file.");
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Image file is too large (max 5MB).");
-      return;
-    }
-
-    setError(null);
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64String = reader.result as string;
@@ -84,337 +58,149 @@ const App: React.FC = () => {
   const performMatch = async (imageBase64: string) => {
     setIsSearching(true);
     setMatchResult(null);
-    setError(null);
-    
-    const base64Data = imageBase64.split(',')[1];
-    
     try {
+      const base64Data = imageBase64.split(',')[1];
       const result = await matchProductByImage(base64Data, catalog);
-      if (!result || !result.productId) {
-        setError("No clear match found. Try uploading a different angle or a clearer photo.");
-      } else {
-        setMatchResult(result);
-      }
+      setMatchResult(result);
     } catch (err) {
-      console.error("Match error:", err);
-      setError("AI analysis failed. Please check your connection and try again.");
+      setError({title: "分析失败", msg: "无法处理此图片，请尝试更清晰的照片。"});
     } finally {
       setIsSearching(false);
     }
   };
 
-  const categories = useMemo(() => {
-    const cats = new Set(catalog.map(p => p.category));
-    return ['All', ...Array.from(cats)].sort();
-  }, [catalog]);
-
-  const maxAvailablePrice = useMemo(() => {
-    return Math.max(...catalog.map(p => p.numericPrice), 0);
-  }, [catalog]);
-
-  const filteredCatalog = useMemo(() => {
-    return catalog.filter(p => {
-      const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
-      const matchesPrice = maxPriceFilter === null || p.numericPrice <= maxPriceFilter;
-      return matchesCategory && matchesPrice;
-    });
-  }, [catalog, selectedCategory, maxPriceFilter]);
-
   const matchedProduct = catalog.find(p => p.id === matchResult?.productId);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Navbar */}
-      <nav className="glass sticky top-0 z-40 border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-indigo-600 text-white p-2 rounded-lg">
-              <i className="fas fa-eye"></i>
-            </div>
-            <span className="font-bold text-xl tracking-tight">LensInventory</span>
+    <div className="min-h-screen bg-[#f8fafc] flex flex-col font-sans">
+      <nav className="glass sticky top-0 z-40 border-b border-gray-200 px-6 h-16 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="bg-indigo-600 text-white w-8 h-8 rounded-lg flex items-center justify-center">
+            <i className="fas fa-search-plus"></i>
           </div>
-          {appState === AppState.CATALOG && (
-            <button 
-              onClick={() => {
-                setAppState(AppState.IDLE);
-                setCatalog([]);
-                setScanStats(null);
-                setMatchResult(null);
-                setUploadedImage(null);
-                setError(null);
-              }}
-              className="text-sm font-medium text-gray-500 hover:text-indigo-600 transition-colors"
-            >
-              Reset Session
-            </button>
-          )}
+          <span className="font-bold text-xl text-slate-800 tracking-tight">LensInventory</span>
         </div>
+        {appState === AppState.CATALOG && (
+          <button onClick={() => window.location.reload()} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800">
+            <i className="fas fa-redo-alt mr-1"></i> 重新开始
+          </button>
+        )}
       </nav>
 
-      <main className="flex-grow max-w-7xl mx-auto px-4 py-12 w-full">
-        {/* Step 1: URL Entry */}
+      <main className="flex-grow max-w-5xl mx-auto w-full px-6 py-12">
         {appState === AppState.IDLE && (
-          <div className="max-w-2xl mx-auto text-center animate-fade-in">
-            <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 leading-tight">
-              Turn any website into an <span className="text-indigo-600">AI-searchable</span> inventory.
-            </h1>
-            <p className="text-xl text-gray-600 mb-10">
-              Input a shop URL to scan products and find matches instantly via visual search.
-            </p>
+          <div className="max-w-2xl mx-auto text-center space-y-8">
+            <div className="space-y-4">
+              <h1 className="text-5xl font-extrabold text-slate-900 leading-[1.1]">
+                像用 <span className="text-indigo-600">Google Lens</span> 一样搜索任何店铺
+              </h1>
+              <p className="text-lg text-slate-500">
+                输入网址扫描库存，上传照片即可找到店内同款商品。
+              </p>
+            </div>
+
             <form onSubmit={handleScan} className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                <i className="fas fa-link text-gray-400"></i>
-              </div>
               <input 
                 type="url" 
                 required
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://shop.example.com"
-                className="block w-full pl-12 pr-32 py-5 text-lg border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 transition-all outline-none"
-                disabled={isScanning}
+                placeholder="粘贴店铺网址 (例如: https://...)"
+                className="w-full pl-6 pr-36 py-5 text-lg bg-white border-2 border-slate-200 rounded-2xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all outline-none shadow-sm group-hover:shadow-md"
               />
               <button 
                 type="submit"
-                disabled={isScanning}
-                className="absolute right-2 top-2 bottom-2 bg-indigo-600 text-white px-8 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                className="absolute right-2 top-2 bottom-2 bg-indigo-600 text-white px-8 rounded-xl font-bold hover:bg-indigo-700 active:scale-95 transition-all"
               >
-                {isScanning ? <i className="fas fa-spinner fa-spin"></i> : 'Scan Now'}
+                开始扫描
               </button>
             </form>
+
             {error && (
-              <div className="mt-6 p-6 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-4 text-red-700 text-left animate-fade-in">
-                <i className="fas fa-exclamation-circle mt-1 text-red-500"></i>
-                <div className="flex-1">
-                  <p className="font-bold mb-1">Could not start scan</p>
-                  <p className="text-sm opacity-90">{error}</p>
+              <div className="bg-red-50 border border-red-100 p-6 rounded-2xl text-left flex gap-4 animate-fade-in">
+                <div className="text-red-500 text-xl"><i className="fas fa-exclamation-triangle"></i></div>
+                <div>
+                  <h4 className="font-bold text-red-800">{error.title}</h4>
+                  <p className="text-red-600 text-sm mt-1">{error.msg}</p>
+                  {error.msg.includes("API Key") && (
+                    <a href="https://aistudio.google.com/" target="_blank" className="inline-block mt-3 text-xs font-bold text-indigo-600 hover:underline">
+                      获取免费的 Gemini API Key →
+                    </a>
+                  )}
                 </div>
               </div>
             )}
+
+            <div className="pt-8 grid grid-cols-3 gap-4">
+              <div className="p-4 bg-white rounded-xl border border-slate-100 text-center">
+                <i className="fas fa-bolt text-amber-500 mb-2"></i>
+                <p className="text-xs font-bold text-slate-400">极速扫描</p>
+              </div>
+              <div className="p-4 bg-white rounded-xl border border-slate-100 text-center">
+                <i className="fas fa-robot text-indigo-500 mb-2"></i>
+                <p className="text-xs font-bold text-slate-400">AI 视觉</p>
+              </div>
+              <div className="p-4 bg-white rounded-xl border border-slate-100 text-center">
+                <i className="fas fa-check text-emerald-500 mb-2"></i>
+                <p className="text-xs font-bold text-slate-400">免费使用</p>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Step 2: Catalog View & Search */}
         {appState === AppState.CATALOG && (
           <div className="space-y-8 animate-fade-in">
-            {/* Statistics Dashboard */}
-            {scanStats && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm flex items-center gap-4">
-                  <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center text-xl">
-                    <i className="fas fa-boxes"></i>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Total Products</p>
-                    <p className="text-2xl font-black text-gray-900">{scanStats.totalCount}</p>
-                  </div>
-                </div>
-                <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm flex items-center gap-4">
-                  <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-xl">
-                    <i className="fas fa-tags"></i>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Category</p>
-                    <p className="text-2xl font-black text-gray-900 truncate max-w-[120px]">{scanStats.category}</p>
-                  </div>
-                </div>
-                <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm flex items-center gap-4">
-                  <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center text-xl">
-                    <i className="fas fa-bolt"></i>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Scan Speed</p>
-                    <p className="text-2xl font-black text-gray-900">{scanStats.scanDuration}</p>
-                  </div>
-                </div>
-                <div className="bg-indigo-600 p-6 rounded-3xl shadow-lg flex items-center gap-4 text-white">
-                  <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-xl">
-                    <i className="fas fa-check-double"></i>
-                  </div>
-                  <div>
-                    <p className="text-xs text-white/70 font-bold uppercase tracking-wider">Status</p>
-                    <p className="text-2xl font-black">Indexed</p>
-                  </div>
-                </div>
+            <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">库存浏览器</h2>
+                <p className="text-slate-500">已成功从网站索引 {catalog.length} 件商品</p>
               </div>
-            )}
-
-            {/* Grounding Sources Notice */}
-            {scanStats?.sources && scanStats.sources.length > 0 && (
-              <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <i className="fas fa-info-circle text-indigo-600"></i>
-                  <span className="text-sm text-indigo-900 font-medium">Inventory verified via Google Search grounding. See sources in the sidebar.</span>
-                </div>
-              </div>
-            )}
-
-            {/* Header / Search bar */}
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
-              <div className="w-full md:w-auto">
-                <h2 className="text-2xl font-bold text-gray-900">Inventory Explorer</h2>
-                <p className="text-gray-500 text-sm">Browsing items from {new URL(url).hostname}</p>
-              </div>
-              
-              <div className="flex items-center gap-4 w-full md:w-auto">
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  className="hidden" 
-                  accept="image/*" 
-                  onChange={handleImageUpload}
-                />
-                <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isSearching}
-                  className={`flex-grow md:flex-grow-0 flex items-center justify-center gap-2 bg-indigo-600 text-white px-6 py-4 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg active:scale-95 ${isSearching ? 'opacity-50 cursor-not-allowed' : ''}`}
+              <div className="flex gap-4">
+                <input type="file" id="visual-upload" className="hidden" accept="image/*" onChange={handleImageUpload} />
+                <label 
+                  htmlFor="visual-upload"
+                  className="bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold cursor-pointer hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-200"
                 >
-                  <i className="fas fa-camera"></i>
-                  {isSearching ? 'Analyzing...' : 'Visual Search'}
-                </button>
+                  <i className="fas fa-camera"></i> 视觉匹配商品
+                </label>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-              <div className="lg:col-span-3">
-                {isSearching ? (
-                  <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-gray-300">
-                    <div className="relative mb-6">
-                      <div className="w-24 h-24 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-                      <i className="fas fa-bolt absolute inset-0 flex items-center justify-center text-indigo-600 text-2xl animate-pulse"></i>
-                    </div>
-                    <h3 className="text-xl font-bold">Matching Image...</h3>
-                    <p className="text-gray-500">Comparing visual signatures against {catalog.length} items</p>
-                  </div>
-                ) : matchedProduct ? (
-                  <div className="space-y-8 animate-fade-in">
-                    <div className="flex items-center gap-3 text-green-600 font-bold bg-green-50 w-fit px-4 py-2 rounded-full border border-green-100">
-                      <i className="fas fa-check-circle"></i>
-                      <span>Match Found! ({(matchResult!.confidence * 100).toFixed(0)}% Confidence)</span>
-                    </div>
-                    
-                    <div className="bg-white rounded-3xl overflow-hidden border border-gray-200 shadow-xl flex flex-col md:flex-row">
-                      <div className="md:w-1/2 aspect-square">
-                        <img 
-                          src={matchedProduct.imageUrl} 
-                          alt={matchedProduct.name} 
-                          className="w-full h-full object-cover"
-                          onError={(e) => {(e.target as HTMLImageElement).src = `https://picsum.photos/seed/${matchedProduct.id}/800/800`}}
-                        />
-                      </div>
-                      <div className="md:w-1/2 p-8 flex flex-col justify-center">
-                        <span className="text-indigo-600 font-bold uppercase tracking-widest text-xs mb-2">{matchedProduct.category}</span>
-                        <h2 className="text-3xl font-bold text-gray-900 mb-4">{matchedProduct.name}</h2>
-                        <div className="text-2xl font-black text-indigo-600 mb-6">{matchedProduct.price}</div>
-                        <p className="text-gray-600 mb-8 leading-relaxed">
-                          {matchResult?.reasoning || matchedProduct.description}
-                        </p>
-                        <div className="flex flex-wrap gap-4">
-                          <a 
-                            href={matchedProduct.sourceUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="bg-gray-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-black transition-all text-center flex-grow"
-                          >
-                            Buy This Item
-                          </a>
-                          <button 
-                            onClick={() => {
-                              setMatchResult(null);
-                              setUploadedImage(null);
-                              setError(null);
-                            }}
-                            className="bg-gray-100 text-gray-600 px-8 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all text-center"
-                          >
-                            Clear Results
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <h3 className="text-xl font-bold pt-8">Similar Items</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                      {catalog.filter(p => p.id !== matchedProduct.id).slice(0, 3).map(product => (
-                        <ProductCard key={product.id} product={product} />
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <h3 className="text-xl font-bold mb-6">Inventory ({catalog.length} items)</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
-                      {catalog.map(product => (
-                        <ProductCard key={product.id} product={product} />
-                      ))}
-                    </div>
-                  </div>
-                )}
+            {isSearching && (
+              <div className="py-20 text-center">
+                <div className="inline-block w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p className="text-slate-500 font-medium">正在分析图片并寻找匹配项...</p>
               </div>
+            )}
 
-              <div className="lg:col-span-1">
-                <div className="sticky top-24 space-y-6">
-                  {/* Verification Sources Sidebar */}
-                  {scanStats?.sources && scanStats.sources.length > 0 && (
-                    <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
-                      <h3 className="font-bold mb-4 text-xs uppercase tracking-widest text-gray-400">Search Grounding Sources</h3>
-                      <ul className="space-y-3">
-                        {scanStats.sources.map((source, idx) => (
-                          <li key={idx}>
-                            <a 
-                              href={source.uri} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-xs text-indigo-600 hover:underline flex items-start gap-2"
-                            >
-                              <i className="fas fa-external-link-alt mt-0.5 opacity-70"></i>
-                              <span className="line-clamp-2">{source.title}</span>
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
-                    <h3 className="font-bold mb-4">Search Context</h3>
-                    {uploadedImage ? (
-                      <div className="space-y-4">
-                        <div className="aspect-square rounded-2xl overflow-hidden border bg-gray-50 relative group">
-                          <img src={uploadedImage} alt="Uploaded" className="w-full h-full object-cover" />
-                        </div>
-                        <p className="text-xs text-gray-400 text-center italic">Current search image</p>
-                      </div>
-                    ) : (
-                      <div className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center p-6 text-center text-gray-400">
-                        <i className="fas fa-cloud-upload-alt text-4xl mb-3"></i>
-                        <p className="text-sm">Upload a photo to see visual search results</p>
-                      </div>
-                    )}
+            {!isSearching && matchedProduct && (
+              <div className="bg-white rounded-3xl p-2 border border-indigo-200 shadow-2xl animate-fade-in">
+                <div className="bg-indigo-50 p-3 rounded-2xl flex items-center justify-between px-6 mb-2">
+                  <span className="font-bold text-indigo-600">匹配结果 ({(matchResult!.confidence * 100).toFixed(0)}%)</span>
+                  <button onClick={() => setMatchResult(null)} className="text-slate-400 hover:text-slate-600 text-sm">清除结果</button>
+                </div>
+                <div className="flex flex-col md:flex-row">
+                  <div className="md:w-1/3 aspect-square p-4">
+                    <img src={matchedProduct.imageUrl} className="w-full h-full object-cover rounded-2xl" />
                   </div>
-                  <div className="bg-indigo-900 text-white p-6 rounded-3xl shadow-xl">
-                    <h4 className="font-bold mb-2">How it works</h4>
-                    <p className="text-sm text-indigo-100/70 leading-relaxed">
-                      Our vision model compares your photo against the shapes, colors, and textures of the products we indexed.
-                    </p>
+                  <div className="md:w-2/3 p-8 flex flex-col justify-center">
+                    <h3 className="text-3xl font-bold mb-2">{matchedProduct.name}</h3>
+                    <p className="text-indigo-600 font-black text-2xl mb-4">{matchedProduct.price}</p>
+                    <p className="text-slate-500 mb-6">{matchResult?.reasoning || matchedProduct.description}</p>
+                    <a href={matchedProduct.sourceUrl} target="_blank" className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold text-center inline-block">去原店购买</a>
                   </div>
                 </div>
               </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {catalog.map(p => <ProductCard key={p.id} product={p} />)}
             </div>
           </div>
         )}
       </main>
 
       {appState === AppState.SCANNING && <ScannerOverlay />}
-
-      <footer className="py-10 border-t border-gray-200 mt-20">
-        <div className="max-w-7xl mx-auto px-4 flex justify-center text-gray-400">
-          <div className="flex items-center gap-2">
-            <i className="fas fa-eye"></i>
-            <span className="font-semibold">LensInventory</span>
-            <span className="text-xs">&copy; 2024</span>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 };

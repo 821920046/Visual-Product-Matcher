@@ -1,20 +1,45 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# LensInventory - AI 智能网页商品扫描与视觉搜索
 
-# Run and deploy your AI Studio app
+LensInventory 是一款基于 Google Gemini 3 系列模型开发的智能电商辅助工具。它能够自动分析并记录任意电商网站的商品数据，并允许用户通过上传图片，在已保存的商品库中进行实时的视觉比对与匹配。
 
-This contains everything you need to run your app locally.
+## 🚀 核心功能
 
-View your app in AI Studio: https://ai.studio/apps/drive/1moVThEXaS5Q6VIhOXVFyRA9V_lkHOuiq
+- **全自动网页扫描**：输入 URL，AI 自动识别页面上的商品、价格、描述及图片链接。
+- **自动库存统计**：扫描完成后，自动汇总商品总数、站点类别，并计算扫描用时。
+- **动态过滤系统**：支持按分类筛选及价格区间滑动过滤。
+- **AI 驱动的视觉匹配**：利用 Gemini 3 的多模态识别能力进行图像比对。
 
-## Run Locally
+## 🛠️ 技术栈
 
-**Prerequisites:**  Node.js
+- **Frontend**: React 19, TypeScript, Vite
+- **Styling**: Tailwind CSS
+- **AI Engine**: @google/genai (Gemini-3-flash-preview)
 
+## 📦 本地开发
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. 安装依赖：`npm install`
+2. 运行：`npm run dev`
+3. 构建：`npm run build`
+
+## ☁️ 在 Cloudflare Pages 上部署 (生产环境)
+
+建议使用 Cloudflare Pages 的构建功能来优化应用性能。
+
+### 步骤 1：准备工作
+将代码（包含 `package.json`）上传到 GitHub/GitLab。
+
+### 步骤 2：Cloudflare Pages 设置
+1. 在 Cloudflare 控制台点击 **Create application** > **Pages** > **Connect to Git**。
+2. 在 **Build settings** 中设置：
+   - **Framework preset**: `Vite`
+   - **Build command**: `npm run build`
+   - **Build output directory**: `dist`
+3. 在 **Environment variables** 中添加：
+   - `API_KEY`: 您的 Gemini API 密钥。
+
+### 步骤 3：发布
+点击 **Save and Deploy**，Cloudflare 将自动运行构建并发布至生产环境。
+
+## 📝 注意事项
+- 请确保在 Google AI Studio 中启用了 Google Search Grounding 能力。
+- 扫描深度受限于 Gemini 模型对目标网站的实时索引能力。

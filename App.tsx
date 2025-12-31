@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { scanWebsite, matchProductByImage } from './services/geminiService';
 import { Product, AppState, MatchResult, ScanStats } from './types';
 import { ScannerOverlay } from './components/ScannerOverlay';
@@ -14,6 +14,10 @@ const App: React.FC = () => {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Filter state
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [maxPriceFilter, setMaxPriceFilter] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -31,6 +35,8 @@ const App: React.FC = () => {
       setCatalog(result.products);
       setScanStats(result.stats);
       setAppState(AppState.CATALOG);
+      setSelectedCategory('All');
+      setMaxPriceFilter(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred while scanning the website.");
       setAppState(AppState.IDLE);
@@ -86,6 +92,23 @@ const App: React.FC = () => {
     }
   };
 
+  const categories = useMemo(() => {
+    const cats = new Set(catalog.map(p => p.category));
+    return ['All', ...Array.from(cats)].sort();
+  }, [catalog]);
+
+  const maxAvailablePrice = useMemo(() => {
+    return Math.max(...catalog.map(p => p.numericPrice), 0);
+  }, [catalog]);
+
+  const filteredCatalog = useMemo(() => {
+    return catalog.filter(p => {
+      const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
+      const matchesPrice = maxPriceFilter === null || p.numericPrice <= maxPriceFilter;
+      return matchesCategory && matchesPrice;
+    });
+  }, [catalog, selectedCategory, maxPriceFilter]);
+
   const matchedProduct = catalog.find(p => p.id === matchResult?.productId);
 
   return (
@@ -108,6 +131,8 @@ const App: React.FC = () => {
                 setMatchResult(null);
                 setUploadedImage(null);
                 setError(null);
+                setSelectedCategory('All');
+                setMaxPriceFilter(null);
               }}
               className="text-sm font-medium text-gray-500 hover:text-indigo-600 transition-colors"
             >
@@ -152,24 +177,6 @@ const App: React.FC = () => {
                 {error}
               </div>
             )}
-            
-            <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="p-6 bg-white rounded-2xl shadow-sm border border-gray-100">
-                <div className="text-indigo-600 mb-4"><i className="fas fa-globe-americas fa-2x"></i></div>
-                <h3 className="font-bold mb-2">1. Paste URL</h3>
-                <p className="text-sm text-gray-500">Add any e-commerce site you want to catalog.</p>
-              </div>
-              <div className="p-6 bg-white rounded-2xl shadow-sm border border-gray-100">
-                <div className="text-indigo-600 mb-4"><i className="fas fa-brain fa-2x"></i></div>
-                <h3 className="font-bold mb-2">2. AI Indexing</h3>
-                <p className="text-sm text-gray-500">We analyze the site and memorize all products.</p>
-              </div>
-              <div className="p-6 bg-white rounded-2xl shadow-sm border border-gray-100">
-                <div className="text-indigo-600 mb-4"><i className="fas fa-camera fa-2x"></i></div>
-                <h3 className="font-bold mb-2">3. Search by Image</h3>
-                <p className="text-sm text-gray-500">Upload a photo to find the matching item.</p>
-              </div>
-            </div>
           </div>
         )}
 
@@ -194,7 +201,7 @@ const App: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Category</p>
-                    <p className="text-2xl font-black text-gray-900 truncate max-w-[120px] md:max-w-none">{scanStats.category}</p>
+                    <p className="text-2xl font-black text-gray-900 truncate">{scanStats.category}</p>
                   </div>
                 </div>
                 <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm flex items-center gap-4">
@@ -206,34 +213,21 @@ const App: React.FC = () => {
                     <p className="text-2xl font-black text-gray-900">{scanStats.scanDuration}</p>
                   </div>
                 </div>
-                <div className="bg-indigo-600 p-6 rounded-3xl shadow-lg shadow-indigo-200 flex items-center gap-4 text-white">
+                <div className="bg-indigo-600 p-6 rounded-3xl shadow-lg flex items-center gap-4 text-white">
                   <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-xl">
                     <i className="fas fa-check-double"></i>
                   </div>
                   <div>
                     <p className="text-xs text-white/70 font-bold uppercase tracking-wider">Status</p>
-                    <p className="text-2xl font-black">Ready</p>
+                    <p className="text-2xl font-black">Indexed</p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Error Banner */}
-            {error && (
-              <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center justify-between text-red-700 font-medium animate-fade-in shadow-sm">
-                <div className="flex items-center gap-3">
-                  <i className="fas fa-exclamation-circle text-lg"></i>
-                  <span>{error}</span>
-                </div>
-                <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 p-1">
-                  <i className="fas fa-times"></i>
-                </button>
-              </div>
-            )}
-
             {/* Header / Search bar */}
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
-              <div>
+              <div className="w-full md:w-auto">
                 <h2 className="text-2xl font-bold text-gray-900">Inventory Explorer</h2>
                 <p className="text-gray-500 text-sm">Browsing items from {new URL(url).hostname}</p>
               </div>
@@ -257,6 +251,50 @@ const App: React.FC = () => {
               </div>
             </div>
 
+            {/* Filter Bar */}
+            <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="space-y-3">
+                  <span className="text-sm font-bold text-gray-400 uppercase tracking-widest">Filter by Category</span>
+                  <div className="flex flex-wrap gap-2">
+                    {categories.map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                          selectedCategory === cat 
+                            ? 'bg-indigo-600 text-white shadow-md' 
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3 min-w-[250px]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-bold text-gray-400 uppercase tracking-widest">Max Price</span>
+                    <span className="text-indigo-600 font-bold">${maxPriceFilter === null ? maxAvailablePrice.toFixed(0) : maxPriceFilter}</span>
+                  </div>
+                  <input 
+                    type="range"
+                    min="0"
+                    max={maxAvailablePrice}
+                    step="1"
+                    value={maxPriceFilter === null ? maxAvailablePrice : maxPriceFilter}
+                    onChange={(e) => setMaxPriceFilter(Number(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
+                  <div className="flex justify-between text-[10px] text-gray-400 font-bold">
+                    <span>$0</span>
+                    <span>${maxAvailablePrice.toFixed(0)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
               <div className="lg:col-span-3">
                 {isSearching ? (
@@ -270,6 +308,7 @@ const App: React.FC = () => {
                   </div>
                 ) : matchedProduct ? (
                   <div className="space-y-8 animate-fade-in">
+                    {/* ... (matched product display stays the same) ... */}
                     <div className="flex items-center gap-3 text-green-600 font-bold bg-green-50 w-fit px-4 py-2 rounded-full border border-green-100">
                       <i className="fas fa-check-circle"></i>
                       <span>Match Found! ({(matchResult!.confidence * 100).toFixed(0)}% Confidence)</span>
@@ -285,7 +324,7 @@ const App: React.FC = () => {
                         />
                       </div>
                       <div className="md:w-1/2 p-8 flex flex-col justify-center">
-                        <span className="text-indigo-600 font-bold uppercase tracking-widest text-xs mb-2">Primary Match</span>
+                        <span className="text-indigo-600 font-bold uppercase tracking-widest text-xs mb-2">{matchedProduct.category}</span>
                         <h2 className="text-3xl font-bold text-gray-900 mb-4">{matchedProduct.name}</h2>
                         <div className="text-2xl font-black text-indigo-600 mb-6">{matchedProduct.price}</div>
                         <p className="text-gray-600 mb-8 leading-relaxed">
@@ -314,24 +353,51 @@ const App: React.FC = () => {
                       </div>
                     </div>
 
-                    <h3 className="text-xl font-bold pt-8">Full Inventory ({catalog.length} Detailed Items)</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                      {catalog.filter(p => p.id !== matchedProduct.id).map(product => (
-                        <ProductCard key={product.id} product={product} />
-                      ))}
-                    </div>
+                    <h3 className="text-xl font-bold pt-8">Filtered Results ({filteredCatalog.length} items)</h3>
+                    {filteredCatalog.length > 0 ? (
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                        {filteredCatalog.filter(p => p.id !== matchedProduct.id).map(product => (
+                          <ProductCard key={product.id} product={product} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-gray-200">
+                        <p className="text-gray-400">No products match your current filters.</p>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {catalog.map(product => (
-                      <ProductCard key={product.id} product={product} />
-                    ))}
+                  <div>
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-xl font-bold">Filtered Inventory ({filteredCatalog.length})</h3>
+                      {(selectedCategory !== 'All' || maxPriceFilter !== null) && (
+                        <button 
+                          onClick={() => {setSelectedCategory('All'); setMaxPriceFilter(null);}}
+                          className="text-xs font-bold text-indigo-600 hover:underline"
+                        >
+                          Reset Filters
+                        </button>
+                      )}
+                    </div>
+                    {filteredCatalog.length > 0 ? (
+                      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
+                        {filteredCatalog.map(product => (
+                          <ProductCard key={product.id} product={product} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-gray-200">
+                        <i className="fas fa-filter text-3xl text-gray-200 mb-4"></i>
+                        <p className="text-gray-400">No products match your current filters.</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
               <div className="lg:col-span-1">
                 <div className="sticky top-24 space-y-6">
+                  {/* ... (sidebar content remains the same) ... */}
                   <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
                     <h3 className="font-bold mb-4">Search Context</h3>
                     {uploadedImage ? (
@@ -358,11 +424,10 @@ const App: React.FC = () => {
                       </div>
                     )}
                   </div>
-
                   <div className="bg-indigo-900 text-white p-6 rounded-3xl shadow-xl">
                     <h4 className="font-bold mb-2">How it works</h4>
                     <p className="text-sm text-indigo-100/70 leading-relaxed">
-                      Our vision model compares your photo against the shapes, colors, and textures of the products we just indexed.
+                      Our vision model compares your photo against the shapes, colors, and textures of the products we just indexed. Use the filters to narrow down the search space!
                     </p>
                   </div>
                 </div>

@@ -22,6 +22,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, highlight }) 
         <div className="absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-bold">
           {product.price}
         </div>
+        <div className="absolute bottom-2 left-2 bg-white/90 text-indigo-600 px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">
+          {product.category}
+        </div>
       </div>
       <div className="p-4">
         <h3 className="font-bold text-gray-900 line-clamp-1 mb-1">{product.name}</h3>

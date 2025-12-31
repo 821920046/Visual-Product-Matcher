@@ -17,7 +17,8 @@ export const scanWebsite = async (url: string): Promise<{ products: Product[], s
                2. Provide a total count of unique products visible or identifiable on the landing page/catalog.
                3. Determine the primary shopping category of this site.
                
-               For each product in the list, provide: name, image URL (real or high-quality placeholder), short description, and price. 
+               For each product in the list, provide: name, image URL, short description, price, and a specific sub-category (e.g., 'Shirts', 'Shoes', 'Electronics'). 
+               Also provide a 'numericPrice' field which is the price as a pure number (float).
                Return the data in valid JSON format.`,
     config: {
       tools: [{ googleSearch: {} }],
@@ -34,10 +35,12 @@ export const scanWebsite = async (url: string): Promise<{ products: Product[], s
                 name: { type: Type.STRING },
                 description: { type: Type.STRING },
                 price: { type: Type.STRING },
+                numericPrice: { type: Type.NUMBER },
+                category: { type: Type.STRING },
                 imageUrl: { type: Type.STRING },
                 sourceUrl: { type: Type.STRING },
               },
-              required: ["name", "description", "price", "imageUrl"],
+              required: ["name", "description", "price", "numericPrice", "category", "imageUrl"],
             },
           },
           totalIdentifiedCount: { type: Type.INTEGER },

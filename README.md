@@ -1,45 +1,69 @@
-# LensInventory - AI 智能网页商品扫描与视觉搜索
 
-LensInventory 是一款基于 Google Gemini 3 系列模型开发的智能电商辅助工具。它能够自动分析并记录任意电商网站的商品数据，并允许用户通过上传图片，在已保存的商品库中进行实时的视觉比对与匹配。
+# 🔍 LensInventory: AI-Powered Visual Search Engine
 
-## 🚀 核心功能
+[English](#english) | [中文](#chinese)
 
-- **全自动网页扫描**：输入 URL，AI 自动识别页面上的商品、价格、描述及图片链接。
-- **自动库存统计**：扫描完成后，自动汇总商品总数、站点类别，并计算扫描用时。
-- **动态过滤系统**：支持按分类筛选及价格区间滑动过滤。
-- **AI 驱动的视觉匹配**：利用 Gemini 3 的多模态识别能力进行图像比对。
+---
 
-## 🛠️ 技术栈
+<a name="english"></a>
+## 🚀 Overview
+LensInventory is a next-generation visual search tool built on **Gemini 3 Pro/Flash**. It bridges the gap between web cataloging and visual recognition. Users can scan any e-commerce website to create a real-time searchable inventory and then use their camera or local files to find matching products instantly.
 
-- **Frontend**: React 19, TypeScript, Vite
+### ✨ Key Features
+- **Intelligent Cataloging**: Automatically extracts product names, prices, categories, and images from any URL.
+- **Multimodal Search**: Leverages Gemini's vision capabilities to match uploaded photos with indexed data.
+- **Smart Filtering**: Dynamic filtering by price range and category inferred by AI.
+- **Google Search Grounding**: Uses real-time search data to verify product availability and pricing.
+
+### 🛠️ Tech Stack
+- **AI Platform**: Google Gemini 3 (Flash Preview)
+- **Frontend**: React 19 + TypeScript
 - **Styling**: Tailwind CSS
-- **AI Engine**: @google/genai (Gemini-3-flash-preview)
+- **Bundler**: Vite (Optimized for Cloudflare)
 
-## 📦 本地开发
+---
 
-1. 安装依赖：`npm install`
-2. 运行：`npm run dev`
-3. 构建：`npm run build`
+<a name="chinese"></a>
+## 🚀 项目简介
+LensInventory 是一款基于 **Gemini 3** 系列模型构建的智能视觉搜索工具。它能将任何网页转化为可视觉搜索的数据库。
 
-## ☁️ 在 Cloudflare Pages 上部署 (生产环境)
+### ✨ 核心功能
+- **智能索引**：自动从指定 URL 提取商品名称、价格、分类及图片。
+- **多模态匹配**：利用 Gemini 的视觉识别能力，将用户上传的照片与库存数据进行毫秒级匹配。
+- **动态过滤**：支持 AI 自动推断的分类过滤及价格区间筛选。
+- **实时联网**：集成 Google Search Grounding，确保扫描数据的时效性。
 
-建议使用 Cloudflare Pages 的构建功能来优化应用性能。
+---
 
-### 步骤 1：准备工作
-将代码（包含 `package.json`）上传到 GitHub/GitLab。
+## 📦 Deployment / 部署指南 (Cloudflare Pages)
 
-### 步骤 2：Cloudflare Pages 设置
-1. 在 Cloudflare 控制台点击 **Create application** > **Pages** > **Connect to Git**。
-2. 在 **Build settings** 中设置：
-   - **Framework preset**: `Vite`
-   - **Build command**: `npm run build`
-   - **Build output directory**: `dist`
-3. 在 **Environment variables** 中添加：
-   - `API_KEY`: 您的 Gemini API 密钥。
+### 1. Preparation / 准备
+Upload the repository to GitHub. Ensure `package.json` and `vite.config.ts` are in the root directory.
 
-### 步骤 3：发布
-点击 **Save and Deploy**，Cloudflare 将自动运行构建并发布至生产环境。
+### 2. Configuration / 配置
+- **Framework Preset**: `Vite`
+- **Build Command**: `npm run build`
+- **Output Directory**: `dist`
 
-## 📝 注意事项
-- 请确保在 Google AI Studio 中启用了 Google Search Grounding 能力。
-- 扫描深度受限于 Gemini 模型对目标网站的实时索引能力。
+### 3. Environment Variables / 环境变量 (CRITICAL)
+Add the following key in the Cloudflare Dashboard:
+- `API_KEY`: Your Google AI Studio (Gemini) API Key.
+
+---
+
+## ⚙️ Development / 开发环境
+```bash
+# Install dependencies
+npm install
+
+# Run dev server
+npm run dev
+
+# Build for production
+npm run build
+```
+
+## ⚠️ Limitations / 注意事项
+- **API Limits**: Subject to Gemini's free/paid tier quotas.
+- **Website Access**: The scanning capability depends on the target website's accessibility to Google Search crawlers.
+- **Data Persistence**: Currently, the catalog is stored in session state. Refreshing will clear the index.

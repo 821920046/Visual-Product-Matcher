@@ -2,14 +2,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Use a type-safe reference for process for the config environment
-const nodeProcess = typeof process !== 'undefined' ? process : { env: { API_KEY: '' } };
-
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Replace the literal string to avoid 'process' variable detection in the final bundle
-    'process.env.API_KEY': JSON.stringify(nodeProcess.env.API_KEY || '')
+    // Explicitly define process.env.API_KEY for the browser environment
+    'process.env.API_KEY': JSON.stringify(process.env.API_KEY || '')
   },
   build: {
     outDir: 'dist',

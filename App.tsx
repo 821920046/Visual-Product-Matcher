@@ -14,6 +14,7 @@ const App: React.FC = () => {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
 
   // Filter state
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -23,14 +24,16 @@ const App: React.FC = () => {
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url) return;
+    if (!url || isScanning) return;
 
     setError(null);
+    setIsScanning(true);
     setAppState(AppState.SCANNING);
+    
     try {
       const result = await scanWebsite(url);
       if (result.products.length === 0) {
-        throw new Error("No products could be identified on this website. Please try another URL.");
+        throw new Error("No products could be identified. The website might be protected or have no clear product listings.");
       }
       setCatalog(result.products);
       setScanStats(result.stats);
@@ -38,8 +41,19 @@ const App: React.FC = () => {
       setSelectedCategory('All');
       setMaxPriceFilter(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred while scanning the website.");
+      console.error("Scan error:", err);
+      let message = "An error occurred while scanning. ";
+      if (err instanceof Error) {
+        if (err.message.includes('API key not valid')) {
+          message = "The provided Gemini API Key is invalid or expired. Please check your environment variables.";
+        } else {
+          message += err.message;
+        }
+      }
+      setError(message);
       setAppState(AppState.IDLE);
+    } finally {
+      setIsScanning(false);
     }
   };
 
@@ -53,7 +67,7 @@ const App: React.FC = () => {
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setError("Image file is too large. Please upload an image smaller than 5MB.");
+      setError("Image file is too large (max 5MB).");
       return;
     }
 
@@ -63,9 +77,6 @@ const App: React.FC = () => {
       const base64String = reader.result as string;
       setUploadedImage(base64String);
       performMatch(base64String);
-    };
-    reader.onerror = () => {
-      setError("Failed to read the uploaded image. Please try again.");
     };
     reader.readAsDataURL(file);
   };
@@ -80,13 +91,13 @@ const App: React.FC = () => {
     try {
       const result = await matchProductByImage(base64Data, catalog);
       if (!result || !result.productId) {
-        setError("No clear match found in the current inventory. Try a clearer photo.");
+        setError("No clear match found. Try uploading a different angle or a clearer photo.");
       } else {
         setMatchResult(result);
       }
     } catch (err) {
       console.error("Match error:", err);
-      setError("The AI encountered an issue while analyzing your image. Please try again in a few moments.");
+      setError("AI analysis failed. Please check your connection and try again.");
     } finally {
       setIsSearching(false);
     }
@@ -131,8 +142,6 @@ const App: React.FC = () => {
                 setMatchResult(null);
                 setUploadedImage(null);
                 setError(null);
-                setSelectedCategory('All');
-                setMaxPriceFilter(null);
               }}
               className="text-sm font-medium text-gray-500 hover:text-indigo-600 transition-colors"
             >
@@ -150,7 +159,7 @@ const App: React.FC = () => {
               Turn any website into an <span className="text-indigo-600">AI-searchable</span> inventory.
             </h1>
             <p className="text-xl text-gray-600 mb-10">
-              Input a shop URL, scan its products, and use visual search to find what you're looking for instantly.
+              Input a shop URL to scan products and find matches instantly via visual search.
             </p>
             <form onSubmit={handleScan} className="relative group">
               <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
@@ -163,18 +172,23 @@ const App: React.FC = () => {
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://shop.example.com"
                 className="block w-full pl-12 pr-32 py-5 text-lg border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 transition-all outline-none"
+                disabled={isScanning}
               />
               <button 
                 type="submit"
-                className="absolute right-2 top-2 bottom-2 bg-indigo-600 text-white px-8 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md active:scale-95"
+                disabled={isScanning}
+                className="absolute right-2 top-2 bottom-2 bg-indigo-600 text-white px-8 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
               >
-                Scan Now
+                {isScanning ? <i className="fas fa-spinner fa-spin"></i> : 'Scan Now'}
               </button>
             </form>
             {error && (
-              <div className="mt-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600 text-sm font-medium animate-bounce">
-                <i className="fas fa-exclamation-triangle"></i>
-                {error}
+              <div className="mt-6 p-6 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-4 text-red-700 text-left animate-fade-in">
+                <i className="fas fa-exclamation-circle mt-1 text-red-500"></i>
+                <div className="flex-1">
+                  <p className="font-bold mb-1">Could not start scan</p>
+                  <p className="text-sm opacity-90">{error}</p>
+                </div>
               </div>
             )}
           </div>
@@ -182,10 +196,10 @@ const App: React.FC = () => {
 
         {/* Step 2: Catalog View & Search */}
         {appState === AppState.CATALOG && (
-          <div className="space-y-8">
+          <div className="space-y-8 animate-fade-in">
             {/* Statistics Dashboard */}
             {scanStats && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm flex items-center gap-4">
                   <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center text-xl">
                     <i className="fas fa-boxes"></i>
@@ -201,7 +215,7 @@ const App: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Category</p>
-                    <p className="text-2xl font-black text-gray-900 truncate">{scanStats.category}</p>
+                    <p className="text-2xl font-black text-gray-900 truncate max-w-[120px]">{scanStats.category}</p>
                   </div>
                 </div>
                 <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm flex items-center gap-4">
@@ -221,6 +235,16 @@ const App: React.FC = () => {
                     <p className="text-xs text-white/70 font-bold uppercase tracking-wider">Status</p>
                     <p className="text-2xl font-black">Indexed</p>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Grounding Sources Notice */}
+            {scanStats?.sources && scanStats.sources.length > 0 && (
+              <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <i className="fas fa-info-circle text-indigo-600"></i>
+                  <span className="text-sm text-indigo-900 font-medium">Inventory verified via Google Search grounding. See sources in the sidebar.</span>
                 </div>
               </div>
             )}
@@ -248,50 +272,6 @@ const App: React.FC = () => {
                   <i className="fas fa-camera"></i>
                   {isSearching ? 'Analyzing...' : 'Visual Search'}
                 </button>
-              </div>
-            </div>
-
-            {/* Filter Bar */}
-            <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm space-y-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="space-y-3">
-                  <span className="text-sm font-bold text-gray-400 uppercase tracking-widest">Filter by Category</span>
-                  <div className="flex flex-wrap gap-2">
-                    {categories.map(cat => (
-                      <button
-                        key={cat}
-                        onClick={() => setSelectedCategory(cat)}
-                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                          selectedCategory === cat 
-                            ? 'bg-indigo-600 text-white shadow-md' 
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-3 min-w-[250px]">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-bold text-gray-400 uppercase tracking-widest">Max Price</span>
-                    <span className="text-indigo-600 font-bold">${maxPriceFilter === null ? maxAvailablePrice.toFixed(0) : maxPriceFilter}</span>
-                  </div>
-                  <input 
-                    type="range"
-                    min="0"
-                    max={maxAvailablePrice}
-                    step="1"
-                    value={maxPriceFilter === null ? maxAvailablePrice : maxPriceFilter}
-                    onChange={(e) => setMaxPriceFilter(Number(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <div className="flex justify-between text-[10px] text-gray-400 font-bold">
-                    <span>$0</span>
-                    <span>${maxAvailablePrice.toFixed(0)}</span>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -352,54 +332,31 @@ const App: React.FC = () => {
                       </div>
                     </div>
 
-                    <h3 className="text-xl font-bold pt-8">Filtered Results ({filteredCatalog.length} items)</h3>
-                    {filteredCatalog.length > 0 ? (
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                        {filteredCatalog.filter(p => p.id !== matchedProduct.id).map(product => (
-                          <ProductCard key={product.id} product={product} />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-gray-200">
-                        <p className="text-gray-400">No products match your current filters.</p>
-                      </div>
-                    )}
+                    <h3 className="text-xl font-bold pt-8">Similar Items</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                      {catalog.filter(p => p.id !== matchedProduct.id).slice(0, 3).map(product => (
+                        <ProductCard key={product.id} product={product} />
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <div>
-                    <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-xl font-bold">Filtered Inventory ({filteredCatalog.length})</h3>
-                      {(selectedCategory !== 'All' || maxPriceFilter !== null) && (
-                        <button 
-                          onClick={() => {setSelectedCategory('All'); setMaxPriceFilter(null);}}
-                          className="text-xs font-bold text-indigo-600 hover:underline"
-                        >
-                          Reset Filters
-                        </button>
-                      )}
+                    <h3 className="text-xl font-bold mb-6">Inventory ({catalog.length} items)</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {catalog.map(product => (
+                        <ProductCard key={product.id} product={product} />
+                      ))}
                     </div>
-                    {filteredCatalog.length > 0 ? (
-                      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {filteredCatalog.map(product => (
-                          <ProductCard key={product.id} product={product} />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-gray-200">
-                        <i className="fas fa-filter text-3xl text-gray-200 mb-4"></i>
-                        <p className="text-gray-400">No products match your current filters.</p>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
 
               <div className="lg:col-span-1">
                 <div className="sticky top-24 space-y-6">
-                  {/* Grounding Sources as required by guidelines */}
+                  {/* Verification Sources Sidebar */}
                   {scanStats?.sources && scanStats.sources.length > 0 && (
                     <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
-                      <h3 className="font-bold mb-4 text-xs uppercase tracking-widest text-gray-400">Verified Sources</h3>
+                      <h3 className="font-bold mb-4 text-xs uppercase tracking-widest text-gray-400">Search Grounding Sources</h3>
                       <ul className="space-y-3">
                         {scanStats.sources.map((source, idx) => (
                           <li key={idx}>
@@ -409,8 +366,8 @@ const App: React.FC = () => {
                               rel="noopener noreferrer"
                               className="text-xs text-indigo-600 hover:underline flex items-start gap-2"
                             >
-                              <i className="fas fa-external-link-alt mt-0.5"></i>
-                              <span className="line-clamp-2">{source.title || source.uri}</span>
+                              <i className="fas fa-external-link-alt mt-0.5 opacity-70"></i>
+                              <span className="line-clamp-2">{source.title}</span>
                             </a>
                           </li>
                         ))}
@@ -424,18 +381,8 @@ const App: React.FC = () => {
                       <div className="space-y-4">
                         <div className="aspect-square rounded-2xl overflow-hidden border bg-gray-50 relative group">
                           <img src={uploadedImage} alt="Uploaded" className="w-full h-full object-cover" />
-                          {!isSearching && (
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <button 
-                                onClick={() => fileInputRef.current?.click()}
-                                className="bg-white text-gray-900 px-4 py-2 rounded-lg text-sm font-bold shadow-lg"
-                              >
-                                Change Photo
-                              </button>
-                            </div>
-                          )}
                         </div>
-                        <p className="text-xs text-gray-400 text-center italic">Uploaded search image</p>
+                        <p className="text-xs text-gray-400 text-center italic">Current search image</p>
                       </div>
                     ) : (
                       <div className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center p-6 text-center text-gray-400">
@@ -447,7 +394,7 @@ const App: React.FC = () => {
                   <div className="bg-indigo-900 text-white p-6 rounded-3xl shadow-xl">
                     <h4 className="font-bold mb-2">How it works</h4>
                     <p className="text-sm text-indigo-100/70 leading-relaxed">
-                      Our vision model compares your photo against the shapes, colors, and textures of the products we just indexed. Use the filters to narrow down the search space!
+                      Our vision model compares your photo against the shapes, colors, and textures of the products we indexed.
                     </p>
                   </div>
                 </div>
@@ -460,8 +407,8 @@ const App: React.FC = () => {
       {appState === AppState.SCANNING && <ScannerOverlay />}
 
       <footer className="py-10 border-t border-gray-200 mt-20">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-2 text-gray-400">
+        <div className="max-w-7xl mx-auto px-4 flex justify-center text-gray-400">
+          <div className="flex items-center gap-2">
             <i className="fas fa-eye"></i>
             <span className="font-semibold">LensInventory</span>
             <span className="text-xs">&copy; 2024</span>

@@ -7,13 +7,17 @@ import { Product, MatchResult, ScanStats } from "../types";
  * Returns a list of products and statistical data, including search grounding sources.
  */
 export const scanWebsite = async (url: string): Promise<{ products: Product[], stats: ScanStats }> => {
-  // Use process.env.API_KEY directly as per @google/genai guidelines.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.warn("API_KEY is not defined in the environment.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey: apiKey || '' });
   const startTime = Date.now();
   
   const response = await ai.models.generateContent({
-    // Using gemini-3-pro-preview for complex data extraction and reasoning tasks.
-    model: "gemini-3-pro-preview",
+    // Using gemini-3-flash-preview for high performance and better availability.
+    model: "gemini-3-flash-preview",
     contents: `Thoroughly scan the website: ${url}. 
                1. Identify as many specific products as possible (up to 20).
                2. Provide a total count of unique products visible or identifiable on the landing page/catalog.
@@ -58,16 +62,15 @@ export const scanWebsite = async (url: string): Promise<{ products: Product[], s
   // Extract grounding sources as required by Google Search grounding guidelines.
   const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
   const sources = groundingChunks?.map((chunk: any) => ({
-    title: chunk.web?.title || 'Search Source',
+    title: chunk.web?.title || 'Verified Source',
     uri: chunk.web?.uri
   })).filter((s: any) => s.uri) || [];
 
   try {
-    // When Google Search is used, the response might contain grounding tokens (e.g., [1]).
-    // We clean these up to ensure JSON parsing succeeds.
-    // response.text is a property, not a method.
-    const text = (response.text || "{}").replace(/\[\d+\]/g, "");
-    const data = JSON.parse(text);
+    // Clean up grounding footnotes (e.g., [1]) which can break JSON parsing.
+    const rawText = response.text || "{}";
+    const cleanText = rawText.replace(/\[\d+\]/g, "");
+    const data = JSON.parse(cleanText);
     
     const products = (data.products || []).map((p: any, idx: number) => ({
       ...p,
@@ -86,9 +89,10 @@ export const scanWebsite = async (url: string): Promise<{ products: Product[], s
     };
   } catch (error) {
     console.error("Failed to parse scan results:", error);
+    // If JSON fails but we have sources, still return the stats.
     return { 
       products: [], 
-      stats: { totalCount: 0, category: "Unknown", scanDuration: "0s", sources } 
+      stats: { totalCount: 0, category: "Parsing Failed", scanDuration: `${duration}s`, sources } 
     };
   }
 };
@@ -100,16 +104,14 @@ export const matchProductByImage = async (
   imageBase64: string,
   catalog: Product[]
 ): Promise<MatchResult | null> => {
-  // Use process.env.API_KEY directly as per @google/genai guidelines.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   
   const catalogContext = catalog.map(p => 
     `ID: ${p.id}, Name: ${p.name}, Description: ${p.description}`
   ).join("\n");
 
   const response = await ai.models.generateContent({
-    // Using gemini-3-pro-preview for advanced visual reasoning and matching.
-    model: "gemini-3-pro-preview",
+    model: "gemini-3-flash-preview",
     contents: {
       parts: [
         {
@@ -143,8 +145,8 @@ export const matchProductByImage = async (
   });
 
   try {
-    // response.text is a property.
-    return JSON.parse(response.text || "null");
+    const text = (response.text || "null").replace(/\[\d+\]/g, "");
+    return JSON.parse(text);
   } catch (error) {
     console.error("Failed to match product:", error);
     return null;

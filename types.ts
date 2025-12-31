@@ -14,6 +14,7 @@ export interface ScanStats {
   totalCount: number;
   category: string;
   scanDuration: string;
+  sources?: { title: string; uri: string }[];
 }
 
 export enum AppState {

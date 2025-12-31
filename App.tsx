@@ -308,7 +308,6 @@ const App: React.FC = () => {
                   </div>
                 ) : matchedProduct ? (
                   <div className="space-y-8 animate-fade-in">
-                    {/* ... (matched product display stays the same) ... */}
                     <div className="flex items-center gap-3 text-green-600 font-bold bg-green-50 w-fit px-4 py-2 rounded-full border border-green-100">
                       <i className="fas fa-check-circle"></i>
                       <span>Match Found! ({(matchResult!.confidence * 100).toFixed(0)}% Confidence)</span>
@@ -397,7 +396,28 @@ const App: React.FC = () => {
 
               <div className="lg:col-span-1">
                 <div className="sticky top-24 space-y-6">
-                  {/* ... (sidebar content remains the same) ... */}
+                  {/* Grounding Sources as required by guidelines */}
+                  {scanStats?.sources && scanStats.sources.length > 0 && (
+                    <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
+                      <h3 className="font-bold mb-4 text-xs uppercase tracking-widest text-gray-400">Verified Sources</h3>
+                      <ul className="space-y-3">
+                        {scanStats.sources.map((source, idx) => (
+                          <li key={idx}>
+                            <a 
+                              href={source.uri} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-xs text-indigo-600 hover:underline flex items-start gap-2"
+                            >
+                              <i className="fas fa-external-link-alt mt-0.5"></i>
+                              <span className="line-clamp-2">{source.title || source.uri}</span>
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
                     <h3 className="font-bold mb-4">Search Context</h3>
                     {uploadedImage ? (

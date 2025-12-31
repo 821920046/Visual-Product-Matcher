@@ -1,11 +1,13 @@
 
-declare namespace NodeJS {
-  interface ProcessEnv {
-    readonly API_KEY: string;
-    readonly [key: string]: string | undefined;
-  }
-}
+// Ensure this file is treated as a module
+export {};
 
-interface Window {
-  // Add custom window properties if needed
+declare global {
+  // Use var to allow redeclaration/merging in the global scope, fixing block-scoped declaration errors.
+  var process: {
+    env: {
+      readonly API_KEY: string;
+      [key: string]: string | undefined;
+    };
+  };
 }

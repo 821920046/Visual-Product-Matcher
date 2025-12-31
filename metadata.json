@@ -1,0 +1,7 @@
+{
+  "name": "Visual Product Matcher",
+  "description": "Scan websites to index products and use visual search (AI-powered) to find matches from the scanned inventory via image upload.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

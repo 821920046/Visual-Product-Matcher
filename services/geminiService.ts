@@ -7,12 +7,13 @@ import { Product, MatchResult, ScanStats } from "../types";
  * Returns a list of products and statistical data, including search grounding sources.
  */
 export const scanWebsite = async (url: string): Promise<{ products: Product[], stats: ScanStats }> => {
-  // Create a new GoogleGenAI instance right before making an API call to ensure it uses the most up-to-date API key.
+  // Use process.env.API_KEY directly as per @google/genai guidelines.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const startTime = Date.now();
   
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    // Using gemini-3-pro-preview for complex data extraction and reasoning tasks.
+    model: "gemini-3-pro-preview",
     contents: `Thoroughly scan the website: ${url}. 
                1. Identify as many specific products as possible (up to 20).
                2. Provide a total count of unique products visible or identifiable on the landing page/catalog.
@@ -64,6 +65,7 @@ export const scanWebsite = async (url: string): Promise<{ products: Product[], s
   try {
     // When Google Search is used, the response might contain grounding tokens (e.g., [1]).
     // We clean these up to ensure JSON parsing succeeds.
+    // response.text is a property, not a method.
     const text = (response.text || "{}").replace(/\[\d+\]/g, "");
     const data = JSON.parse(text);
     
@@ -98,7 +100,7 @@ export const matchProductByImage = async (
   imageBase64: string,
   catalog: Product[]
 ): Promise<MatchResult | null> => {
-  // Create a new GoogleGenAI instance right before making an API call.
+  // Use process.env.API_KEY directly as per @google/genai guidelines.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const catalogContext = catalog.map(p => 
@@ -106,7 +108,8 @@ export const matchProductByImage = async (
   ).join("\n");
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    // Using gemini-3-pro-preview for advanced visual reasoning and matching.
+    model: "gemini-3-pro-preview",
     contents: {
       parts: [
         {
@@ -140,6 +143,7 @@ export const matchProductByImage = async (
   });
 
   try {
+    // response.text is a property.
     return JSON.parse(response.text || "null");
   } catch (error) {
     console.error("Failed to match product:", error);

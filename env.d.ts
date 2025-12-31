@@ -1,13 +1,12 @@
 
-// Ensure this file is treated as a module
-export {};
-
+// Augment the existing ProcessEnv interface to include API_KEY
 declare global {
-  // Use var to allow redeclaration/merging in the global scope, fixing block-scoped declaration errors.
-  var process: {
-    env: {
-      readonly API_KEY: string;
+  namespace NodeJS {
+    interface ProcessEnv {
+      API_KEY: string;
       [key: string]: string | undefined;
-    };
-  };
+    }
+  }
 }
+
+export {};

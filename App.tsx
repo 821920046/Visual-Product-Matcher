@@ -15,6 +15,42 @@ const App: React.FC = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
+  // 持久化：加载状态
+  useEffect(() => {
+    const saved = localStorage.getItem('lens_inventory_data');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.catalog && parsed.catalog.length > 0) {
+          setCatalog(parsed.catalog);
+          setUrl(parsed.url || '');
+          // 仅当确实有数据时才恢复到 CATALOG 视图
+          setAppState(AppState.CATALOG);
+        }
+      } catch (e) {
+        console.error("Failed to load saved state:", e);
+      }
+    }
+  }, []);
+
+  // 持久化：保存状态
+  useEffect(() => {
+    if (appState === AppState.CATALOG && catalog.length > 0) {
+      localStorage.setItem('lens_inventory_data', JSON.stringify({
+        catalog,
+        url,
+        timestamp: Date.now()
+      }));
+    }
+  }, [catalog, url, appState]);
+
+  const handleReset = () => {
+    if (confirm('确定要清除所有缓存数据并重新开始吗？')) {
+      localStorage.removeItem('lens_inventory_data');
+      window.location.reload();
+    }
+  };
+
   // 倒计时逻辑
   useEffect(() => {
     if (cooldown > 0) {
@@ -101,7 +137,7 @@ const App: React.FC = () => {
           <span className="font-bold text-xl text-slate-800 tracking-tight">LensInventory</span>
         </div>
         {appState === AppState.CATALOG && (
-          <button onClick={() => window.location.reload()} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
+          <button onClick={handleReset} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
             <i className="fas fa-redo-alt mr-1"></i> 重新开始
           </button>
         )}

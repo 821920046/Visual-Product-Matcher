@@ -87,7 +87,8 @@ export const matchProductByImage = async (
   catalog: Product[]
 ): Promise<MatchResult | null> => {
   const ai = getClient();
-  const context = catalog.map(p => `ID:${p.id} Name:${p.name}`).slice(0, 20).join("\n");
+  // 移除 .slice(0, 20) 限制，利用 Gemini 3 的长上下文能力
+  const context = catalog.map(p => `ID:${p.id} Name:${p.name}`).join("\n");
 
   try {
     const response = await ai.models.generateContent({
@@ -100,8 +101,12 @@ export const matchProductByImage = async (
       },
       config: { responseMimeType: "application/json" },
     });
-    return JSON.parse(response.text.replace(/\[\d+\]/g, ""));
+    
+    let text = response.text || "";
+    text = text.replace(/```json\s*|\s*```/g, "").replace(/\[\d+\]/g, "");
+    return JSON.parse(text);
   } catch (e) {
+    console.error("Match Error:", e);
     return null;
   }
 };

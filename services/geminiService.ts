@@ -19,7 +19,6 @@ export const scanWebsite = async (url: string): Promise<{ products: Product[], s
   const ai = getClient();
   
   try {
-    // 将搜索和 JSON 提取合并为一个 Prompt，减少 50% 配额消耗
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `You are an expert shop scanner. 
@@ -43,14 +42,27 @@ export const scanWebsite = async (url: string): Promise<{ products: Product[], s
     // 关键步骤：清洗 JSON 中可能存在的搜索引用标记（如 [1], [2]）
     // 因为 Search Grounding 会强行插入这些标记导致 JSON.parse 崩溃
     let rawText = response.text || "";
+    // 移除可能存在的 Markdown 代码块标记
+    rawText = rawText.replace(/```json\s*|\s*```/g, "");
     const cleanJsonText = rawText.replace(/\[\d+\]/g, "").trim();
     
-    const data = JSON.parse(cleanJsonText);
+    let data;
+    try {
+      data = JSON.parse(cleanJsonText);
+    } catch (e) {
+      console.error("JSON Parse Error:", e, "Text:", cleanJsonText);
+      throw new Error("解析结果失败，请重试");
+    }
     
+    const parseNum = (price: string, numericPrice: any) => {
+      const candidate = typeof numericPrice === 'number' ? numericPrice : parseFloat(String(price || '').replace(/[^\d.]/g, ''));
+      return isNaN(candidate) ? NaN : candidate;
+    };
     const products = (data.products || []).map((p: any, idx: number) => ({
       ...p,
       id: p.id || `p-${idx}-${Date.now()}`,
-      sourceUrl: url
+      sourceUrl: url,
+      numericPrice: parseNum(p.price, p.numericPrice)
     }));
 
     // 获取来源链接

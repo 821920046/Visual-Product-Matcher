@@ -14,6 +14,10 @@ const App: React.FC = () => {
   const [error, setError] = useState<{title: string, msg: string, type?: string} | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [stats, setStats] = useState<ScanStats | null>(null);
+  const [minPrice, setMinPrice] = useState<string>('');
+  const [maxPrice, setMaxPrice] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('全部');
 
   // 持久化：加载状态
   useEffect(() => {
@@ -26,6 +30,7 @@ const App: React.FC = () => {
           setUrl(parsed.url || '');
           // 仅当确实有数据时才恢复到 CATALOG 视图
           setAppState(AppState.CATALOG);
+          if (parsed.stats) setStats(parsed.stats);
         }
       } catch (e) {
         console.error("Failed to load saved state:", e);
@@ -39,10 +44,11 @@ const App: React.FC = () => {
       localStorage.setItem('lens_inventory_data', JSON.stringify({
         catalog,
         url,
+        stats,
         timestamp: Date.now()
       }));
     }
-  }, [catalog, url, appState]);
+  }, [catalog, url, stats, appState]);
 
   const handleReset = () => {
     if (confirm('确定要清除所有缓存数据并重新开始吗？')) {
@@ -73,6 +79,7 @@ const App: React.FC = () => {
         throw new Error("提取不到商品。此店可能由于反爬虫无法直接读取，请尝试其他链接。");
       }
       setCatalog(result.products);
+      setStats(result.stats);
       setAppState(AppState.CATALOG);
     } catch (err: any) {
       if (err.message === "QUOTA_EXCEEDED") {
@@ -126,6 +133,14 @@ const App: React.FC = () => {
   };
 
   const matchedProduct = catalog.find(p => p.id === matchResult?.productId);
+  const categories = Array.from(new Set(catalog.map(p => p.category).filter(Boolean)));
+  const filteredCatalog = catalog.filter(p => {
+    const np = typeof p.numericPrice === 'number' ? p.numericPrice : NaN;
+    const minOk = minPrice ? np >= Number(minPrice) : true;
+    const maxOk = maxPrice ? np <= Number(maxPrice) : true;
+    const catOk = selectedCategory && selectedCategory !== '全部' ? p.category === selectedCategory : true;
+    return minOk && maxOk && catOk;
+  });
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col font-sans">
@@ -230,8 +245,21 @@ const App: React.FC = () => {
                 <p className="text-slate-500 flex items-center gap-2">
                   <i className="fas fa-check-circle text-emerald-500"></i> 已索引 {catalog.length} 件商品
                 </p>
+                {stats && (
+                  <div className="text-slate-400 text-sm mt-1">
+                    类别 {stats.category} · 用时 {stats.scanDuration}
+                  </div>
+                )}
+                {stats?.sources && stats.sources.length > 0 && (
+                  <div className="mt-2 text-xs text-slate-400">
+                    来源：
+                    {stats.sources.slice(0, 3).map((s, i) => (
+                      <a key={i} href={s.uri} target="_blank" className="ml-2 text-indigo-600 hover:underline">{s.title}</a>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="flex gap-4">
+              <div className="flex gap-4 flex-wrap items-center">
                 <input type="file" id="visual-upload" className="hidden" accept="image/*" onChange={handleImageUpload} />
                 <label 
                   htmlFor="visual-upload"
@@ -239,6 +267,37 @@ const App: React.FC = () => {
                 >
                   <i className="fas fa-camera"></i> 视觉匹配搜索
                 </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={minPrice}
+                    onChange={(e) => setMinPrice(e.target.value)}
+                    placeholder="最低价"
+                    className="w-24 px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                  />
+                  <span className="text-slate-400 text-sm">-</span>
+                  <input
+                    type="number"
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(e.target.value)}
+                    placeholder="最高价"
+                    className="w-24 px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                  />
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white"
+                  >
+                    <option value="全部">全部</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <button
+                    onClick={() => { setMinPrice(''); setMaxPrice(''); setSelectedCategory('全部'); }}
+                    className="text-sm text-slate-600 hover:text-slate-800"
+                  >
+                    清除筛选
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -278,7 +337,7 @@ const App: React.FC = () => {
             )}
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {catalog.map(p => <ProductCard key={p.id} product={p} highlight={p.id === matchResult?.productId} />)}
+              {filteredCatalog.map(p => <ProductCard key={p.id} product={p} highlight={p.id === matchResult?.productId} />)}
             </div>
           </div>
         )}

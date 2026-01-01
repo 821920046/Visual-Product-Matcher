@@ -21,6 +21,14 @@ LensInventory is a next-generation visual search tool built on **Gemini 3 Pro/Fl
 - **Styling**: Tailwind CSS
 - **Bundler**: Vite (Optimized for Cloudflare)
 
+### ✅ What's New
+- Removed context truncation in matching; supports full catalog context.
+- Added localStorage persistence; catalog survives refresh and can be cleared via “重新开始”.
+- Hardened JSON parsing; strips Markdown code fences and grounding citations.
+- Added price range and category filters; numericPrice fallback parsing from price text.
+- Introduced Cloudflare Workers proxy to hide API Key.
+- Injected API_BASE via Vite; frontend calls proxy endpoints instead of Gemini directly.
+
 ---
 
 <a name="chinese"></a>
@@ -35,19 +43,22 @@ LensInventory 是一款基于 **Gemini 3** 系列模型构建的智能视觉搜�
 
 ---
 
-## 📦 Deployment / 部署指南 (Cloudflare Pages)
+## 📦 Deployment / 部署指南 (Cloudflare Workers + Pages)
 
 ### 1. Preparation / 准备
 Upload the repository to GitHub. Ensure `package.json` and `vite.config.ts` are in the root directory.
 
-### 2. Configuration / 配置
+### 2. Configuration / 配置（前端 Pages）
 - **Framework Preset**: `Vite`
 - **Build Command**: `npm run build`
 - **Output Directory**: `dist`
 
-### 3. Environment Variables / 环境变量 (CRITICAL)
-Add the following key in the Cloudflare Dashboard:
-- `API_KEY`: Your Google AI Studio (Gemini) API Key.
+### 3. Environment Variables / 环境变量
+- 前端（Cloudflare Pages）：`API_BASE`（例如 `/api` 或你的 Workers 地址 `https://<your>.workers.dev/api`）
+- 后端（Cloudflare Workers Secrets）：`API_KEY`（Google AI Studio / Gemini）
+
+详细部署说明见文档：
+- [DEPLOYMENT_CLOUDFLARE.md](file:///c:/Users/qh686/Desktop/google%20code/Visual-Product-Matcher/DEPLOYMENT_CLOUDFLARE.md)
 
 ---
 
@@ -66,4 +77,4 @@ npm run build
 ## ⚠️ Limitations / 注意事项
 - **API Limits**: Subject to Gemini's free/paid tier quotas.
 - **Website Access**: The scanning capability depends on the target website's accessibility to Google Search crawlers.
-- **Data Persistence**: Currently, the catalog is stored in session state. Refreshing will clear the index.
+- **Data Persistence**: Catalog persists in localStorage. Use “重新开始”按钮清除本地缓存。

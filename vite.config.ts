@@ -11,7 +11,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       // 这里的替换非常关键，Vite 会在构建时将代码中所有的 process.env.API_KEY 替换为字符串常量
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || '')
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
+      'process.env.API_BASE': JSON.stringify(env.API_BASE || '/api')
     },
     build: {
       outDir: 'dist',

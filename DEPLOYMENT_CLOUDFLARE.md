@@ -37,6 +37,21 @@ wrangler deploy
 ```
 部署完成后复制你的 `workers.dev` 地址（例如 `https://lensinventory-proxy.<name>.workers.dev`），在前端 Pages 的环境变量里将 `API_BASE` 设置为 `<workers.dev>/api`。
 
+### 无命令行：Cloudflare 控制台部署 Workers
+如果不熟悉命令行，可以直接通过 Cloudflare 网页控制台部署：
+1) 登录 Cloudflare 仪表盘，左侧进入 “Workers & Pages”
+2) 点击 “Create Application” → 选择 “Create Worker”
+3) 命名你的 Worker（例如 `lensinventory-proxy`），创建后进入 “Quick Edit”
+4) 将代理代码复制到编辑器（参考：[worker.ts](file:///c:/Users/qh686/Desktop/google%20code/Visual-Product-Matcher/cf-worker/src/worker.ts)）
+5) 点击 “Save and deploy”
+6) 在 Worker 的 “Settings” → “Variables” → “Add variable”
+   - 类型选择 “Secret”
+   - 名称填 `API_KEY`，值填你的 Google AI Studio API Key
+7) 在 Worker 的 “Triggers” → “Routes”
+   - 添加路由：`你的域名/api/*`
+   - 保存后生效（此时前端可使用 `API_BASE=/api` 同域访问）
+8) 若暂时不绑定域名，也可以使用 `workers.dev` 地址；复制该地址并在前端环境变量设置 `API_BASE=<workers.dev>/api`
+
 1) 进入目录  
 ```bash
 cd cf-worker
@@ -102,6 +117,19 @@ curl -X POST "<WORKERS_URL>/api/match" \
 - `API_BASE`：后端 API 基址
   - 若使用 `workers.dev` 域名：例如 `https://lensinventory-proxy.<yourname>.workers.dev/api`
   - 若后续通过 Routes 挂载到同域：则可设为 `/api`
+
+### 无命令行：Cloudflare 控制台部署 Pages
+1) 在 Cloudflare 仪表盘进入 “Workers & Pages” → 选择 “Pages” → “Create project”
+2) 选择 “Connect to Git” 并关联你的仓库
+3) 在构建设置中：
+   - Framework Preset：选择 `Vite`
+   - Build command：`npm run build`
+   - Output directory：`dist`
+4) 在 Pages 项目的 “Settings” → “Environment variables” 添加：
+   - `API_BASE`：如果已将 Worker 绑定到你的域名的 `/api/*`，设置为 `/api`
+   - 如果使用 `workers.dev`，则设置为 `https://<yourname>.workers.dev/api`
+5) 点击 “Save” 并触发部署（或推送代码自动触发）
+6) 部署完成后访问你的 Pages 域名验证页面功能
 
 前端在构建时会将 `process.env.API_BASE` 注入到代码中：  
 - 参考： [vite.config.ts](file:///c:/Users/qh686/Desktop/google%20code/Visual-Product-Matcher/vite.config.ts#L13-L15)

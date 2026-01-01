@@ -161,6 +161,19 @@ curl -X POST "<WORKERS_URL>/api/match" \
   - Workers 已返回 `Access-Control-Allow-Origin: *`。若你自定义策略，请确保允许前端域名。
 - JSON 解析失败  
   - Workers 与前端均做了文本清洗；若仍报错，建议重试或确认目标站点内容规范。
+- 403 权限错误（Routes 列表/绑定失败）  
+  - 常见原因：
+    - 使用了错误的账号或域名不在当前账号下（控制台左上可切换 Account）
+    - API Token 权限不足（需要 Zone: Workers Routes Read/Edit 与 Account: Workers Scripts/Services Read/Edit）
+    - Service 名称不匹配（以 Workers 概览页显示的名称为准，注意大小写）
+    - 使用 Global API Key 而非 API Token，且未授权访问该资源
+  - 解决步骤：
+    - 在 Cloudflare 控制台右上角进入 “My Profile” → “API Tokens” → “Create Custom Token”
+    - 选择权限：
+      - Zone 权限：Workers Routes（Read、Edit）
+      - Account 权限：Workers Scripts 或 Workers Services（Read、Edit）
+    - 将 Token 作用域限制到目标 Account/Zone，保存后重试
+    - 或直接在控制台使用 “Workers & Pages → 你的 Worker → Triggers → Routes → Add route” 完成绑定（无需 API）
 
 ## 五、环境变量一览
 - Cloudflare Workers（Secrets）

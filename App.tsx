@@ -18,6 +18,9 @@ const App: React.FC = () => {
   const [minPrice, setMinPrice] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('全部');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortMode, setSortMode] = useState<string>('relevance');
+  const [visibleCount, setVisibleCount] = useState<number>(24);
 
   // 持久化：加载状态
   useEffect(() => {
@@ -64,6 +67,26 @@ const App: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [cooldown]);
+  useEffect(() => {
+    const handler = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => performMatch(reader.result as string);
+            reader.readAsDataURL(file);
+            break;
+          }
+        }
+      }
+    };
+    window.addEventListener('paste', handler as any);
+    return () => window.removeEventListener('paste', handler as any);
+  }, []);
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,8 +162,22 @@ const App: React.FC = () => {
     const minOk = minPrice ? np >= Number(minPrice) : true;
     const maxOk = maxPrice ? np <= Number(maxPrice) : true;
     const catOk = selectedCategory && selectedCategory !== '全部' ? p.category === selectedCategory : true;
-    return minOk && maxOk && catOk;
+    const q = searchQuery.trim().toLowerCase();
+    const qOk = q ? (p.name?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q)) : true;
+    return minOk && maxOk && catOk && qOk;
   });
+  const sortedCatalog = [...filteredCatalog].sort((a, b) => {
+    const ap = typeof a.numericPrice === 'number' ? a.numericPrice : Number.POSITIVE_INFINITY;
+    const bp = typeof b.numericPrice === 'number' ? b.numericPrice : Number.POSITIVE_INFINITY;
+    if (sortMode === 'price_asc') return ap - bp;
+    if (sortMode === 'price_desc') return bp - ap;
+    return 0;
+  });
+  const visibleCatalog = sortedCatalog.slice(0, visibleCount);
+
+  useEffect(() => {
+    setVisibleCount(24);
+  }, [minPrice, maxPrice, selectedCategory, searchQuery, sortMode]);
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col font-sans">
@@ -261,12 +298,27 @@ const App: React.FC = () => {
               </div>
               <div className="flex gap-4 flex-wrap items-center">
                 <input type="file" id="visual-upload" className="hidden" accept="image/*" onChange={handleImageUpload} />
-                <label 
-                  htmlFor="visual-upload"
-                  className="bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold cursor-pointer hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100 active:scale-95"
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => performMatch(reader.result as string);
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="flex items-center"
                 >
-                  <i className="fas fa-camera"></i> 视觉匹配搜索
-                </label>
+                  <label 
+                    htmlFor="visual-upload"
+                    className="bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold cursor-pointer hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100 active:scale-95"
+                  >
+                    <i className="fas fa-camera"></i> 视觉匹配搜索
+                  </label>
+                  <span className="ml-3 text-xs text-slate-500">可拖拽图片至此或粘贴剪贴板图片</span>
+                </div>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -283,6 +335,13 @@ const App: React.FC = () => {
                     placeholder="最高价"
                     className="w-24 px-3 py-2 border border-slate-200 rounded-xl text-sm"
                   />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="搜索商品名称或描述"
+                    className="w-40 px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                  />
                   <select
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
@@ -290,6 +349,15 @@ const App: React.FC = () => {
                   >
                     <option value="全部">全部</option>
                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <select
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white"
+                  >
+                    <option value="relevance">相关度</option>
+                    <option value="price_asc">价格从低到高</option>
+                    <option value="price_desc">价格从高到低</option>
                   </select>
                   <button
                     onClick={() => { setMinPrice(''); setMaxPrice(''); setSelectedCategory('全部'); }}
@@ -337,8 +405,18 @@ const App: React.FC = () => {
             )}
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {filteredCatalog.map(p => <ProductCard key={p.id} product={p} highlight={p.id === matchResult?.productId} />)}
+              {visibleCatalog.map(p => <ProductCard key={p.id} product={p} highlight={p.id === matchResult?.productId} />)}
             </div>
+            {visibleCount < sortedCatalog.length && (
+              <div className="flex justify-center mt-6">
+                <button
+                  onClick={() => setVisibleCount(c => c + 24)}
+                  className="px-6 py-3 rounded-xl bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 transition-colors"
+                >
+                  加载更多（{sortedCatalog.length - visibleCount}）
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>
